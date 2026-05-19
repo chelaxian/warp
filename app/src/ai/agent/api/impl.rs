@@ -25,7 +25,28 @@ pub async fn generate_multi_agent_output(
         );
         if params.model.as_str().starts_with(custom_prefix) {
             if let Some(endpoint) = params.openai_compatible_endpoint.clone() {
-                log::info!("Routing to custom endpoint: {} ({})", endpoint.display_name, endpoint.base_url);
+                log::info!(
+                    "Routing to custom endpoint: {} ({})",
+                    endpoint.display_name,
+                    endpoint.base_url
+                );
+                if endpoint.has_api_key
+                    && endpoint.api_key.as_deref().unwrap_or_default().is_empty()
+                {
+                    log::warn!(
+                        "Custom endpoint '{}' is marked as having an API key, but no readable key was loaded",
+                        endpoint.display_name
+                    );
+                    let (tx, rx) = async_channel::unbounded();
+                    let _ = tx
+                        .send(Err(Arc::new(
+                            crate::server::server_api::AIApiError::MissingCustomEndpointApiKey(
+                                endpoint.display_name.clone(),
+                            ),
+                        )))
+                        .await;
+                    return Ok(Box::pin(rx));
+                }
                 let request = crate::ai::openai_compatible_client::from_request_params(&params);
 
                 if !request.has_user_facing_content() {
