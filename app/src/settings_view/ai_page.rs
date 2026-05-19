@@ -6830,7 +6830,7 @@ impl SettingsWidget for CloudHandoffWidget {
                     .finish();
                 let auto_handoff_on_sleep_row = build_toggle_element(
                     render_body_item_label::<AISettingsPageAction>(
-                        "Continue local agents in Cloud Mode before sleep".to_string(),
+                        "Auto-handoff before sleep".to_string(),
                         Some(styles::header_font_color(true, app)),
                         None,
                         LocalOnlyIconState::Hidden,
