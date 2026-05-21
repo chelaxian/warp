@@ -2306,6 +2306,8 @@ pub enum AISettingsPageAction {
     },
     AddQuickAgentCommand,
     RemoveQuickAgentCommand(usize),
+    AddQuickAgentPrompt,
+    RemoveQuickAgentPrompt(usize),
 }
 
 impl From<&AISettingsPageAction> for LoginGatedFeature {
@@ -3158,8 +3160,8 @@ impl TypedActionView for AISettingsPageView {
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
                     let mut commands = settings.quick_agent_commands.value().clone();
                     commands.push(crate::settings::AgentQuickCommand {
-                        label: "Continue".to_string(),
-                        command: "continue".to_string(),
+                        label: "List".to_string(),
+                        command: "ls".to_string(),
                     });
                     report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
                 });
@@ -3175,6 +3177,33 @@ impl TypedActionView for AISettingsPageView {
                         commands.remove(*index);
                     }
                     report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
+                });
+                let subpage = self.active_subpage;
+                let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
+                self.page.inherit_scroll_states_from(&old_page);
+                ctx.notify();
+            }
+            AISettingsPageAction::AddQuickAgentPrompt => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    let mut prompts = settings.quick_agent_prompts.value().clone();
+                    prompts.push(crate::settings::AgentQuickCommand {
+                        label: "Continue".to_string(),
+                        command: "continue".to_string(),
+                    });
+                    report_if_error!(settings.quick_agent_prompts.set_value(prompts, ctx));
+                });
+                let subpage = self.active_subpage;
+                let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
+                self.page.inherit_scroll_states_from(&old_page);
+                ctx.notify();
+            }
+            AISettingsPageAction::RemoveQuickAgentPrompt(index) => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    let mut prompts = settings.quick_agent_prompts.value().clone();
+                    if *index < prompts.len() {
+                        prompts.remove(*index);
+                    }
+                    report_if_error!(settings.quick_agent_prompts.set_value(prompts, ctx));
                 });
                 let subpage = self.active_subpage;
                 let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
@@ -7839,22 +7868,36 @@ struct QuickAgentCommandsWidget {
     command_editors: Vec<(usize, ViewHandle<EditorView>)>,
     remove_buttons: Vec<(usize, ViewHandle<ActionButton>)>,
     add_button: ViewHandle<ActionButton>,
+    prompt_label_editors: Vec<(usize, ViewHandle<EditorView>)>,
+    prompt_editors: Vec<(usize, ViewHandle<EditorView>)>,
+    prompt_remove_buttons: Vec<(usize, ViewHandle<ActionButton>)>,
+    prompt_add_button: ViewHandle<ActionButton>,
 }
 
 impl QuickAgentCommandsWidget {
     fn new(ctx: &mut ViewContext<<Self as SettingsWidget>::View>) -> Self {
         let is_any_ai_enabled = AISettings::as_ref(ctx).is_any_ai_enabled(ctx);
         let commands = AISettings::as_ref(ctx).quick_agent_commands.value().clone();
+        let prompts = AISettings::as_ref(ctx).quick_agent_prompts.value().clone();
 
         let mut label_editors = Vec::new();
         let mut command_editors = Vec::new();
         let mut remove_buttons = Vec::new();
+        let mut prompt_label_editors = Vec::new();
+        let mut prompt_editors = Vec::new();
+        let mut prompt_remove_buttons = Vec::new();
 
         for (index, command) in commands.iter().enumerate() {
             let label_editor =
-                Self::create_editor(&command.label, "Button label", index, true, ctx);
-            let command_editor =
-                Self::create_editor(&command.command, "Prompt to send", index, false, ctx);
+                Self::create_editor(&command.label, "Button label", index, true, false, ctx);
+            let command_editor = Self::create_editor(
+                &command.command,
+                "Shell command to run",
+                index,
+                false,
+                false,
+                ctx,
+            );
             AISettingsPageView::update_editor_interaction_state(
                 label_editor.clone(),
                 is_any_ai_enabled,
@@ -7884,6 +7927,40 @@ impl QuickAgentCommandsWidget {
             remove_buttons.push((index, remove_button));
         }
 
+        for (index, prompt) in prompts.iter().enumerate() {
+            let label_editor =
+                Self::create_editor(&prompt.label, "Button label", index, true, true, ctx);
+            let prompt_editor =
+                Self::create_editor(&prompt.command, "Prompt to send", index, false, true, ctx);
+            AISettingsPageView::update_editor_interaction_state(
+                label_editor.clone(),
+                is_any_ai_enabled,
+                ctx,
+            );
+            AISettingsPageView::update_editor_interaction_state(
+                prompt_editor.clone(),
+                is_any_ai_enabled,
+                ctx,
+            );
+
+            let remove_button = ctx.add_typed_action_view(move |_| {
+                ActionButton::new("Remove", SecondaryTheme)
+                    .with_size(ButtonSize::Small)
+                    .on_click(move |ctx| {
+                        ctx.dispatch_typed_action(AISettingsPageAction::RemoveQuickAgentPrompt(
+                            index,
+                        ));
+                    })
+            });
+            remove_button.update(ctx, |button, ctx| {
+                button.set_disabled(!is_any_ai_enabled, ctx);
+            });
+
+            prompt_label_editors.push((index, label_editor));
+            prompt_editors.push((index, prompt_editor));
+            prompt_remove_buttons.push((index, remove_button));
+        }
+
         let add_button = ctx.add_typed_action_view(|_| {
             ActionButton::new("+ Add Quick Command", SecondaryTheme)
                 .with_size(ButtonSize::Small)
@@ -7894,12 +7971,26 @@ impl QuickAgentCommandsWidget {
         add_button.update(ctx, |button, ctx| {
             button.set_disabled(!is_any_ai_enabled, ctx);
         });
+        let prompt_add_button = ctx.add_typed_action_view(|_| {
+            ActionButton::new("+ Add Quick Prompt", SecondaryTheme)
+                .with_size(ButtonSize::Small)
+                .on_click(|ctx| {
+                    ctx.dispatch_typed_action(AISettingsPageAction::AddQuickAgentPrompt);
+                })
+        });
+        prompt_add_button.update(ctx, |button, ctx| {
+            button.set_disabled(!is_any_ai_enabled, ctx);
+        });
 
         Self {
             label_editors,
             command_editors,
             remove_buttons,
             add_button,
+            prompt_label_editors,
+            prompt_editors,
+            prompt_remove_buttons,
+            prompt_add_button,
         }
     }
 
@@ -7908,6 +7999,7 @@ impl QuickAgentCommandsWidget {
         placeholder: &str,
         index: usize,
         is_label: bool,
+        is_prompt: bool,
         ctx: &mut ViewContext<AISettingsPageView>,
     ) -> ViewHandle<EditorView> {
         let value = initial_value.to_string();
@@ -7937,15 +8029,27 @@ impl QuickAgentCommandsWidget {
             if matches!(event, EditorEvent::Blurred | EditorEvent::Enter) {
                 let buffer_text = editor_clone.as_ref(ctx).buffer_text(ctx);
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
-                    let mut commands = settings.quick_agent_commands.value().clone();
-                    if let Some(command) = commands.get_mut(index) {
-                        if is_label {
-                            command.label = buffer_text.clone();
-                        } else {
-                            command.command = buffer_text.clone();
+                    if is_prompt {
+                        let mut prompts = settings.quick_agent_prompts.value().clone();
+                        if let Some(prompt) = prompts.get_mut(index) {
+                            if is_label {
+                                prompt.label = buffer_text.clone();
+                            } else {
+                                prompt.command = buffer_text.clone();
+                            }
                         }
+                        report_if_error!(settings.quick_agent_prompts.set_value(prompts, ctx));
+                    } else {
+                        let mut commands = settings.quick_agent_commands.value().clone();
+                        if let Some(command) = commands.get_mut(index) {
+                            if is_label {
+                                command.label = buffer_text.clone();
+                            } else {
+                                command.command = buffer_text.clone();
+                            }
+                        }
+                        report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
                     }
-                    report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
                 });
                 ctx.notify();
             }
@@ -7959,6 +8063,7 @@ impl QuickAgentCommandsWidget {
         index: usize,
         appearance: &Appearance,
         is_enabled: bool,
+        is_prompt: bool,
         app: &AppContext,
     ) -> Box<dyn Element> {
         let padding = Some(Coords {
@@ -7994,13 +8099,32 @@ impl QuickAgentCommandsWidget {
         };
 
         let mut column = Flex::column().with_spacing(8.);
-        if let Some((_, editor)) = self.label_editors.iter().find(|(i, _)| *i == index) {
+        let label_editors = if is_prompt {
+            &self.prompt_label_editors
+        } else {
+            &self.label_editors
+        };
+        let value_editors = if is_prompt {
+            &self.prompt_editors
+        } else {
+            &self.command_editors
+        };
+        let remove_buttons = if is_prompt {
+            &self.prompt_remove_buttons
+        } else {
+            &self.remove_buttons
+        };
+
+        if let Some((_, editor)) = label_editors.iter().find(|(i, _)| *i == index) {
             column.add_child(render_field("Button Label", editor.clone()));
         }
-        if let Some((_, editor)) = self.command_editors.iter().find(|(i, _)| *i == index) {
-            column.add_child(render_field("Prompt", editor.clone()));
+        if let Some((_, editor)) = value_editors.iter().find(|(i, _)| *i == index) {
+            column.add_child(render_field(
+                if is_prompt { "Prompt" } else { "Command" },
+                editor.clone(),
+            ));
         }
-        if let Some((_, button)) = self.remove_buttons.iter().find(|(i, _)| *i == index) {
+        if let Some((_, button)) = remove_buttons.iter().find(|(i, _)| *i == index) {
             column.add_child(button.as_ref(app).render(app));
         }
 
@@ -8017,7 +8141,7 @@ impl SettingsWidget for QuickAgentCommandsWidget {
     type View = AISettingsPageView;
 
     fn search_terms(&self) -> &str {
-        "quick commands pinned prompt buttons footer continue"
+        "quick commands quick prompts pinned buttons footer continue"
     }
 
     fn should_render(&self, _app: &AppContext) -> bool {
@@ -8032,6 +8156,7 @@ impl SettingsWidget for QuickAgentCommandsWidget {
     ) -> Box<dyn Element> {
         let is_any_ai_enabled = AISettings::as_ref(app).is_any_ai_enabled(app);
         let commands = AISettings::as_ref(app).quick_agent_commands.value();
+        let prompts = AISettings::as_ref(app).quick_agent_prompts.value();
         let mut column = Flex::column()
             .with_child(render_separator(appearance))
             .with_child(
@@ -8044,15 +8169,47 @@ impl SettingsWidget for QuickAgentCommandsWidget {
                 .finish(),
             )
             .with_child(render_ai_setting_description(
-                "Pinned prompts appear in the agent input footer and submit to the active chat.",
+                "Pinned commands appear in the agent input footer and run in the terminal.",
                 is_any_ai_enabled,
                 app,
             ));
 
         for index in 0..commands.len() {
-            column.add_child(self.render_command_card(index, appearance, is_any_ai_enabled, app));
+            column.add_child(self.render_command_card(
+                index,
+                appearance,
+                is_any_ai_enabled,
+                false,
+                app,
+            ));
         }
         column.add_child(self.add_button.as_ref(app).render(app));
+
+        column.add_child(
+            build_sub_header(
+                appearance,
+                "Quick Prompts",
+                Some(styles::header_font_color(is_any_ai_enabled, app)),
+            )
+            .with_padding_top(HEADER_PADDING)
+            .with_padding_bottom(HEADER_PADDING)
+            .finish(),
+        );
+        column.add_child(render_ai_setting_description(
+            "Pinned prompts appear in the agent input footer and submit to the active chat.",
+            is_any_ai_enabled,
+            app,
+        ));
+        for index in 0..prompts.len() {
+            column.add_child(self.render_command_card(
+                index,
+                appearance,
+                is_any_ai_enabled,
+                true,
+                app,
+            ));
+        }
+        column.add_child(self.prompt_add_button.as_ref(app).render(app));
 
         let _ = view;
         Container::new(column.finish())

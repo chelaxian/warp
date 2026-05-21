@@ -718,13 +718,13 @@ impl settings_value::SettingsValue for ToolbarCommandMap {
     schemars::JsonSchema,
     settings_value::SettingsValue,
 )]
-#[schemars(description = "A quick agent prompt shown as a footer button.")]
+#[schemars(description = "A quick agent footer button.")]
 pub struct AgentQuickCommand {
     #[serde(default)]
     #[schemars(description = "Short label shown on the footer button.")]
     pub label: String,
     #[serde(default)]
-    #[schemars(description = "Prompt text submitted when the button is clicked.")]
+    #[schemars(description = "Text submitted when the button is clicked.")]
     pub command: String,
 }
 
@@ -1127,7 +1127,16 @@ aws_bedrock_login_banner_dismissed: AwsBedrockLoginBannerDismissed {
         sync_to_cloud: SyncToCloud::Never,
         private: false,
         toml_path: "agents.quick_commands",
-        description: "Pinned quick commands shown in the agent input footer.",
+        description: "Pinned shell commands shown in the agent input footer.",
+    }
+    quick_agent_prompts: QuickAgentPrompts {
+        type: Vec<AgentQuickCommand>,
+        default: vec![],
+        supported_platforms: SupportedPlatforms::DESKTOP,
+        sync_to_cloud: SyncToCloud::Never,
+        private: false,
+        toml_path: "agents.quick_prompts",
+        description: "Pinned AI prompts shown in the agent input footer.",
     }
 // Whether or not the user wants agent mode requests to use their saved rules.
     memory_enabled: MemoryEnabled {

@@ -2365,7 +2365,10 @@ impl Input {
                     // Handled by UseAgentToolbar's subscription, not here.
                 }
                 AgentInputFooterEvent::SubmitQuickCommand(command) => {
-                    me.submit_queued_prompt(command.clone(), ctx);
+                    let _ = command;
+                }
+                AgentInputFooterEvent::SubmitQuickPrompt(prompt) => {
+                    me.submit_queued_prompt(prompt.clone(), ctx);
                 }
                 // WriteToPty, InsertIntoCLIRichInput, ToggleCodeReviewPane, and ToggleFileExplorer
                 // are handled by UseAgentToolbar's subscription, not here.

@@ -113,30 +113,25 @@ pub async fn generate_openai_compatible_output(
                             }
                         }
 
-                        if tool_call_events.is_empty() {
-                            vec![Ok(warp_multi_agent_api::ResponseEvent {
-                                r#type: Some(
-                                    warp_multi_agent_api::response_event::Type::Finished(
-                                        warp_multi_agent_api::response_event::StreamFinished {
-                                            token_usage: vec![],
-                                            should_refresh_model_config: false,
-                                            request_cost: None,
-                                            conversation_usage_metadata: None,
-                                            reason: Some(
-                                                warp_multi_agent_api::response_event::stream_finished::Reason::Done(
-                                                    warp_multi_agent_api::response_event::stream_finished::Done {},
-                                                ),
+                        let mut finish_events = tool_call_events;
+                        finish_events.push(Ok(warp_multi_agent_api::ResponseEvent {
+                            r#type: Some(
+                                warp_multi_agent_api::response_event::Type::Finished(
+                                    warp_multi_agent_api::response_event::StreamFinished {
+                                        token_usage: vec![],
+                                        should_refresh_model_config: false,
+                                        request_cost: None,
+                                        conversation_usage_metadata: None,
+                                        reason: Some(
+                                            warp_multi_agent_api::response_event::stream_finished::Reason::Done(
+                                                warp_multi_agent_api::response_event::stream_finished::Done {},
                                             ),
-                                        },
-                                    ),
+                                        ),
+                                    },
                                 ),
-                            })]
-                        } else {
-                            log::debug!(
-                                "Custom endpoint: emitted tool calls without Finished so the action loop can resume"
-                            );
-                            tool_call_events
-                        }
+                            ),
+                        }));
+                        finish_events
                     } else {
                         match serde_json::from_str::<OpenAiChatStreamDelta>(&data) {
                             Ok(delta) => {

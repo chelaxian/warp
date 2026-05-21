@@ -1995,16 +1995,17 @@ impl AgentInputFooter {
         }
     }
 
-    fn render_quick_command_button(
-        command: &crate::settings::AgentQuickCommand,
+    fn render_quick_button(
+        item: &crate::settings::AgentQuickCommand,
+        is_prompt: bool,
         app: &AppContext,
     ) -> Option<Box<dyn Element>> {
-        if !command.is_usable() {
+        if !item.is_usable() {
             return None;
         }
 
-        let command_text = command.command_text().to_string();
-        let label = truncated_quick_command_label(command.display_label());
+        let item_text = item.command_text().to_string();
+        let label = truncated_quick_command_label(item.display_label());
         let appearance = Appearance::as_ref(app);
         let theme = appearance.theme();
         let text = Text::new_inline(label, appearance.ui_font_family(), QUICK_COMMAND_FONT_SIZE)
@@ -2039,9 +2040,15 @@ impl AgentInputFooter {
         Some(
             EventHandler::new(button)
                 .on_left_mouse_down(move |ctx, _, _| {
-                    ctx.dispatch_typed_action(AgentInputFooterAction::SubmitQuickCommand(
-                        command_text.clone(),
-                    ));
+                    if is_prompt {
+                        ctx.dispatch_typed_action(AgentInputFooterAction::SubmitQuickPrompt(
+                            item_text.clone(),
+                        ));
+                    } else {
+                        ctx.dispatch_typed_action(AgentInputFooterAction::SubmitQuickCommand(
+                            item_text.clone(),
+                        ));
+                    }
                     DispatchEventResult::StopPropagation
                 })
                 .finish(),
@@ -2158,7 +2165,12 @@ impl View for AgentInputFooter {
             .with_run_spacing(4.)
             .with_spacing(4.);
         for command in AISettings::as_ref(app).quick_agent_commands.iter() {
-            if let Some(element) = Self::render_quick_command_button(command, app) {
+            if let Some(element) = Self::render_quick_button(command, false, app) {
+                quick_commands.add_child(element);
+            }
+        }
+        for prompt in AISettings::as_ref(app).quick_agent_prompts.iter() {
+            if let Some(element) = Self::render_quick_button(prompt, true, app) {
                 quick_commands.add_child(element);
             }
         }
@@ -2317,6 +2329,7 @@ pub enum AgentInputFooterAction {
     StartRemoteControl,
     StopRemoteControl,
     SubmitQuickCommand(String),
+    SubmitQuickPrompt(String),
     OpenCodingAgentSettings,
     /// Open the local-to-cloud handoff pane. Dispatched by the
     /// "Hand off to cloud" footer chip.
@@ -2511,7 +2524,10 @@ impl TypedActionView for AgentInputFooter {
                 ctx.emit(AgentInputFooterEvent::StopRemoteControl);
             }
             AgentInputFooterAction::SubmitQuickCommand(command) => {
-                ctx.emit(AgentInputFooterEvent::SubmitQuickCommand(command.clone()));
+                ctx.emit(AgentInputFooterEvent::WriteToPty(format!("{command}\n")));
+            }
+            AgentInputFooterAction::SubmitQuickPrompt(prompt) => {
+                ctx.emit(AgentInputFooterEvent::SubmitQuickPrompt(prompt.clone()));
             }
             AgentInputFooterAction::OpenCodingAgentSettings => {
                 #[cfg(not(target_family = "wasm"))]
@@ -2548,6 +2564,7 @@ pub enum AgentInputFooterEvent {
     StartRemoteControl,
     StopRemoteControl,
     SubmitQuickCommand(String),
+    SubmitQuickPrompt(String),
     OpenRichInput,
     HideRichInput,
     ToggledChipMenu {
